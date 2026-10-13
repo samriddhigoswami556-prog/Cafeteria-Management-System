@@ -1,0 +1,13 @@
+# Your real database password lives here - never commit it
+db.properties
+
+# Build output and downloaded driver
+out/
+lib/*.jar
+
+# Editor / OS files
+.vscode/
+.idea/
+*.class
+.DS_Store
+Thumbs.db

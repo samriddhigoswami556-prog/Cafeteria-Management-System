@@ -1,0 +1,11 @@
+# Copy this file to db.properties and put YOUR Oracle details in it.
+#   Windows:  copy db.properties.example db.properties
+#   Linux/Mac: cp db.properties.example db.properties
+# db.properties is git-ignored so your password is never uploaded.
+#
+# Service name: XEPDB1 for Oracle XE 18c/21c.  Older labs use  jdbc:oracle:thin:@localhost:1521:XE
+db.url=jdbc:oracle:thin:@//localhost:1521/XEPDB1
+db.user=system
+db.password=CHANGE_ME
+db.driver=oracle.jdbc.OracleDriver
+http.port=8080
