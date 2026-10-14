@@ -1,123 +1,117 @@
--- ============================================================
---  CAFETERIA MANAGEMENT SYSTEM  -  Oracle SQL (DDL + DML)
---  Run in SQL*Plus:   @sql/schema.sql
---  (Oracle 12c or later / Oracle XE 18c, 21c)
---  Every statement ends with ';' on its own line group so the
---  same file can also be run by the app:  java ... SetupDb
--- ============================================================
 
--- ------------------------------------------------------------
--- 0. CLEAN-UP (errors here on the very first run are harmless)
--- ------------------------------------------------------------
-DROP VIEW  V_ORDER_SUMMARY;
-DROP TABLE ORDER_ITEM  CASCADE CONSTRAINTS;
-DROP TABLE CAFE_ORDER  CASCADE CONSTRAINTS;
-DROP TABLE MENU_ITEM   CASCADE CONSTRAINTS;
-DROP TABLE USERS       CASCADE CONSTRAINTS;
+-- Cafeteria Management System - PostgreSQL schema
 
--- ------------------------------------------------------------
--- 1. DDL  -  CREATE TABLE
--- ------------------------------------------------------------
-CREATE TABLE USERS (
-    USER_ID        NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    USERNAME       VARCHAR2(30)  NOT NULL UNIQUE,
-    PASSWORD_HASH  VARCHAR2(64)  NOT NULL,            -- SHA-256 hex
-    FULL_NAME      VARCHAR2(60)  NOT NULL,
-    EMAIL          VARCHAR2(60),
-    ROLE           VARCHAR2(10)  DEFAULT 'CUSTOMER' NOT NULL
-                   CONSTRAINT CK_USER_ROLE CHECK (ROLE IN ('ADMIN','CUSTOMER')),
-    CUST_TYPE      VARCHAR2(10)  DEFAULT 'STUDENT' NOT NULL
-                   CONSTRAINT CK_CUST_TYPE CHECK (CUST_TYPE IN ('STUDENT','STAFF','GUEST')),
-    WALLET_BALANCE NUMBER(8,2)   DEFAULT 0 NOT NULL
-                   CONSTRAINT CK_WALLET CHECK (WALLET_BALANCE >= 0),
-    CREATED_AT     DATE          DEFAULT SYSDATE
+-- Clean up existing objects safely
+DROP VIEW IF EXISTS v_order_summary;
+DROP TABLE IF EXISTS order_item CASCADE;
+DROP TABLE IF EXISTS cafe_order CASCADE;
+DROP TABLE IF EXISTS menu_item CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+
+-- 1. USERS
+CREATE TABLE users (
+    user_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    username VARCHAR(30) NOT NULL UNIQUE,
+    password_hash VARCHAR(64) NOT NULL,
+    full_name VARCHAR(60) NOT NULL,
+    email VARCHAR(60),
+    role VARCHAR(10) DEFAULT 'CUSTOMER' NOT NULL
+        CHECK (role IN ('ADMIN', 'CUSTOMER')),
+    cust_type VARCHAR(10) DEFAULT 'STUDENT' NOT NULL
+        CHECK (cust_type IN ('STUDENT', 'STAFF', 'GUEST')),
+    wallet_balance NUMERIC(8,2) DEFAULT 0 NOT NULL
+        CHECK (wallet_balance >= 0),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE MENU_ITEM (
-    ITEM_ID    NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    ITEM_NAME  VARCHAR2(50)  NOT NULL UNIQUE,
-    CATEGORY   VARCHAR2(12)  NOT NULL
-               CONSTRAINT CK_CATEGORY CHECK (CATEGORY IN ('BREAKFAST','MEALS','SNACKS','BEVERAGES','DESSERTS')),
-    PRICE      NUMBER(6,2)   NOT NULL CONSTRAINT CK_PRICE CHECK (PRICE > 0),
-    STOCK      NUMBER(5)     DEFAULT 0 NOT NULL CONSTRAINT CK_STOCK CHECK (STOCK >= 0),
-    AVAILABLE  CHAR(1)       DEFAULT 'Y' NOT NULL CONSTRAINT CK_AVAIL CHECK (AVAILABLE IN ('Y','N'))
+-- 2. MENU ITEMS
+CREATE TABLE menu_item (
+    item_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    item_name VARCHAR(50) NOT NULL UNIQUE,
+    category VARCHAR(12) NOT NULL
+        CHECK (category IN ('BREAKFAST', 'MEALS', 'SNACKS', 'BEVERAGES', 'DESSERTS')),
+    price NUMERIC(6,2) NOT NULL CHECK (price > 0),
+    stock INTEGER DEFAULT 0 NOT NULL CHECK (stock >= 0),
+    available CHAR(1) DEFAULT 'Y' NOT NULL
+        CHECK (available IN ('Y', 'N'))
 );
 
-CREATE TABLE CAFE_ORDER (
-    ORDER_ID    NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    USER_ID     NUMBER        NOT NULL,
-    ORDER_DATE  DATE          DEFAULT SYSDATE NOT NULL,
-    SUBTOTAL    NUMBER(9,2)   NOT NULL,
-    DISCOUNT    NUMBER(9,2)   DEFAULT 0 NOT NULL,
-    TAX         NUMBER(9,2)   DEFAULT 0 NOT NULL,
-    TOTAL       NUMBER(9,2)   NOT NULL,
-    PAY_MODE    VARCHAR2(10)  NOT NULL CONSTRAINT CK_PAY CHECK (PAY_MODE IN ('WALLET','CASH')),
-    STATUS      VARCHAR2(12)  DEFAULT 'PLACED' NOT NULL
-                CONSTRAINT CK_STATUS CHECK (STATUS IN ('PLACED','PREPARING','READY','COMPLETED','CANCELLED'))
+-- 3. ORDERS
+CREATE TABLE cafe_order (
+    order_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    subtotal NUMERIC(9,2) NOT NULL,
+    discount NUMERIC(9,2) DEFAULT 0 NOT NULL,
+    tax NUMERIC(9,2) DEFAULT 0 NOT NULL,
+    total NUMERIC(9,2) NOT NULL,
+    pay_mode VARCHAR(10) NOT NULL
+        CHECK (pay_mode IN ('WALLET', 'CASH')),
+    status VARCHAR(12) DEFAULT 'PLACED' NOT NULL
+        CHECK (status IN ('PLACED', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED')),
+    CONSTRAINT fk_order_user
+        FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
-CREATE TABLE ORDER_ITEM (
-    ORDER_ID    NUMBER        NOT NULL,
-    ITEM_ID     NUMBER        NOT NULL,
-    QTY         NUMBER(3)     NOT NULL CONSTRAINT CK_QTY CHECK (QTY > 0),
-    UNIT_PRICE  NUMBER(6,2)   NOT NULL,
-    LINE_TOTAL  NUMBER(9,2)   NOT NULL,
-    CONSTRAINT PK_ORDER_ITEM PRIMARY KEY (ORDER_ID, ITEM_ID),
-    CONSTRAINT FK_OI_ORDER FOREIGN KEY (ORDER_ID) REFERENCES CAFE_ORDER(ORDER_ID),
-    CONSTRAINT FK_OI_ITEM  FOREIGN KEY (ITEM_ID)  REFERENCES MENU_ITEM(ITEM_ID)
+-- 4. ORDER ITEMS
+CREATE TABLE order_item (
+    order_id BIGINT NOT NULL,
+    item_id BIGINT NOT NULL,
+    qty INTEGER NOT NULL CHECK (qty > 0),
+    unit_price NUMERIC(6,2) NOT NULL,
+    line_total NUMERIC(9,2) NOT NULL,
+    CONSTRAINT pk_order_item PRIMARY KEY (order_id, item_id),
+    CONSTRAINT fk_oi_order
+        FOREIGN KEY (order_id) REFERENCES cafe_order(order_id),
+    CONSTRAINT fk_oi_item
+        FOREIGN KEY (item_id) REFERENCES menu_item(item_id)
 );
 
--- ------------------------------------------------------------
--- 2. DDL  -  ALTER TABLE / CREATE INDEX / CREATE VIEW
--- ------------------------------------------------------------
-ALTER TABLE CAFE_ORDER ADD CONSTRAINT FK_ORDER_USER FOREIGN KEY (USER_ID) REFERENCES USERS(USER_ID);
+-- 5. INDEXES
+CREATE INDEX idx_order_user ON cafe_order(user_id);
+CREATE INDEX idx_menu_category ON menu_item(category);
 
-CREATE INDEX IDX_ORDER_USER ON CAFE_ORDER(USER_ID);
-CREATE INDEX IDX_MENU_CATEGORY ON MENU_ITEM(CATEGORY);
+-- 6. ORDER SUMMARY VIEW
+CREATE VIEW v_order_summary AS
+SELECT
+    o.order_id,
+    u.username,
+    u.full_name,
+    o.order_date,
+    o.subtotal,
+    o.discount,
+    o.tax,
+    o.total,
+    o.pay_mode,
+    o.status
+FROM cafe_order o
+JOIN users u ON u.user_id = o.user_id;
 
-CREATE VIEW V_ORDER_SUMMARY AS
-SELECT o.ORDER_ID, u.USERNAME, u.FULL_NAME, o.ORDER_DATE,
-       o.SUBTOTAL, o.DISCOUNT, o.TAX, o.TOTAL, o.PAY_MODE, o.STATUS
-FROM   CAFE_ORDER o JOIN USERS u ON u.USER_ID = o.USER_ID;
+-- 7. SAMPLE USERS
+INSERT INTO users
+    (username, password_hash, full_name, email, role, cust_type, wallet_balance)
+VALUES
+    ('admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
+     'Cafeteria Manager', 'admin@cafe.edu', 'ADMIN', 'STAFF', 0),
+    ('student1', '703b0a3d6ad75b649a28adde7d83c6251da457549263bc7ff45ec709b0a8448b',
+     'Anitha Kumar', 'anitha@mail.com', 'CUSTOMER', 'STUDENT', 500),
+    ('staff1', '10176e7b7b24d317acfcf8d2064cfd2f24e154f7b5a96603077d5ef813d6a6b6',
+     'Bharath Raj', 'bharath@mail.com', 'CUSTOMER', 'STAFF', 800);
 
--- ------------------------------------------------------------
--- 3. DML  -  INSERT (sample data)
---    Logins:  admin / admin123   student1 / student123   staff1 / staff123
---    Passwords are stored as SHA-256 hashes, never as plain text.
--- ------------------------------------------------------------
-INSERT INTO USERS (USERNAME, PASSWORD_HASH, FULL_NAME, EMAIL, ROLE, CUST_TYPE, WALLET_BALANCE)
-VALUES ('admin',    '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'Cafeteria Manager', 'admin@cafe.edu',    'ADMIN',    'STAFF',   0);
-INSERT INTO USERS (USERNAME, PASSWORD_HASH, FULL_NAME, EMAIL, ROLE, CUST_TYPE, WALLET_BALANCE)
-VALUES ('student1', '703b0a3d6ad75b649a28adde7d83c6251da457549263bc7ff45ec709b0a8448b', 'Anitha Kumar',      'anitha@mail.com',  'CUSTOMER', 'STUDENT', 500);
-INSERT INTO USERS (USERNAME, PASSWORD_HASH, FULL_NAME, EMAIL, ROLE, CUST_TYPE, WALLET_BALANCE)
-VALUES ('staff1',   '10176e7b7b24d317acfcf8d2064cfd2f24e154f7b5a96603077d5ef813d6a6b6', 'Bharath Raj',       'bharath@mail.com', 'CUSTOMER', 'STAFF',   800);
-
-INSERT INTO MENU_ITEM (ITEM_NAME, CATEGORY, PRICE, STOCK) VALUES ('Idli (2 pcs)',        'BREAKFAST', 30,  60);
-INSERT INTO MENU_ITEM (ITEM_NAME, CATEGORY, PRICE, STOCK) VALUES ('Masala Dosa',         'BREAKFAST', 50,  40);
-INSERT INTO MENU_ITEM (ITEM_NAME, CATEGORY, PRICE, STOCK) VALUES ('Veg Meals',           'MEALS',     90,  50);
-INSERT INTO MENU_ITEM (ITEM_NAME, CATEGORY, PRICE, STOCK) VALUES ('Chicken Biryani',     'MEALS',    140,  30);
-INSERT INTO MENU_ITEM (ITEM_NAME, CATEGORY, PRICE, STOCK) VALUES ('Paneer Fried Rice',   'MEALS',    110,  25);
-INSERT INTO MENU_ITEM (ITEM_NAME, CATEGORY, PRICE, STOCK) VALUES ('Samosa',              'SNACKS',    15, 100);
-INSERT INTO MENU_ITEM (ITEM_NAME, CATEGORY, PRICE, STOCK) VALUES ('French Fries',        'SNACKS',    60,  35);
-INSERT INTO MENU_ITEM (ITEM_NAME, CATEGORY, PRICE, STOCK) VALUES ('Veg Sandwich',        'SNACKS',    45,  40);
-INSERT INTO MENU_ITEM (ITEM_NAME, CATEGORY, PRICE, STOCK) VALUES ('Filter Coffee',       'BEVERAGES', 20,  80);
-INSERT INTO MENU_ITEM (ITEM_NAME, CATEGORY, PRICE, STOCK) VALUES ('Masala Tea',          'BEVERAGES', 15,  80);
-INSERT INTO MENU_ITEM (ITEM_NAME, CATEGORY, PRICE, STOCK) VALUES ('Cold Coffee',         'BEVERAGES', 50,   8);
-INSERT INTO MENU_ITEM (ITEM_NAME, CATEGORY, PRICE, STOCK) VALUES ('Gulab Jamun (2 pcs)', 'DESSERTS',  35,  30);
-INSERT INTO MENU_ITEM (ITEM_NAME, CATEGORY, PRICE, STOCK) VALUES ('Ice Cream Cup',       'DESSERTS',  40,  25);
+-- 8. SAMPLE MENU
+INSERT INTO menu_item (item_name, category, price, stock) VALUES
+    ('Idli (2 pcs)', 'BREAKFAST', 30, 60),
+    ('Masala Dosa', 'BREAKFAST', 50, 40),
+    ('Veg Meals', 'MEALS', 90, 50),
+    ('Chicken Biryani', 'MEALS', 140, 30),
+    ('Paneer Fried Rice', 'MEALS', 110, 25),
+    ('Samosa', 'SNACKS', 15, 100),
+    ('French Fries', 'SNACKS', 60, 35),
+    ('Veg Sandwich', 'SNACKS', 45, 40),
+    ('Filter Coffee', 'BEVERAGES', 20, 80),
+    ('Masala Tea', 'BEVERAGES', 15, 80),
+    ('Cold Coffee', 'BEVERAGES', 50, 8),
+    ('Gulab Jamun (2 pcs)', 'DESSERTS', 35, 30),
+    ('Ice Cream Cup', 'DESSERTS', 40, 25);
 
 COMMIT;
-
--- ------------------------------------------------------------
--- 4. DML  -  SELECT / UPDATE / DELETE  (examples used by the app)
---    (shown as comments; the app runs them with PreparedStatement)
--- ------------------------------------------------------------
--- Login:         SELECT USER_ID, FULL_NAME, ROLE, CUST_TYPE, WALLET_BALANCE FROM USERS WHERE USERNAME=? AND PASSWORD_HASH=?;
--- Search menu:   SELECT * FROM MENU_ITEM WHERE CATEGORY=? AND PRICE<=? ORDER BY CATEGORY, ITEM_NAME;
--- Update price:  UPDATE MENU_ITEM SET PRICE=?, STOCK=? WHERE ITEM_ID=?;
--- Delete item:   DELETE FROM MENU_ITEM WHERE ITEM_ID=?;
--- Reduce stock:  UPDATE MENU_ITEM SET STOCK=STOCK-? WHERE ITEM_ID=? AND STOCK>=?;
--- Pay wallet:    UPDATE USERS SET WALLET_BALANCE=WALLET_BALANCE-? WHERE USER_ID=? AND WALLET_BALANCE>=?;
--- Sales report:  SELECT m.CATEGORY, SUM(oi.QTY), SUM(oi.LINE_TOTAL) FROM ORDER_ITEM oi
---                JOIN MENU_ITEM m ON m.ITEM_ID=oi.ITEM_ID JOIN CAFE_ORDER o ON o.ORDER_ID=oi.ORDER_ID
---                WHERE o.STATUS<>'CANCELLED' GROUP BY m.CATEGORY;
