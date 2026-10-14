@@ -263,7 +263,7 @@ public class Dao {
                 // 5. persist (header)
                 try (PreparedStatement ps = c.prepareStatement(
                         "INSERT INTO CAFE_ORDER (USER_ID, SUBTOTAL, DISCOUNT, TAX, TOTAL, PAY_MODE, STATUS) VALUES (?,?,?,?,?,?,'PLACED')",
-                        new String[] { "ORDER_ID" })) {
+                        new String[] { "order_id" })) {
                     ps.setLong(1, user.id());
                     ps.setBigDecimal(2, b.subtotal);
                     ps.setBigDecimal(3, b.discount);
